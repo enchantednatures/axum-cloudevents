@@ -1,0 +1,19 @@
+[package]
+name = "axum-cloudevents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Ergonomic CloudEvents extractors for Axum 0.8+"
+keywords = ["axum", "cloudevents", "web", "http", "knative"]
+categories = ["web-programming", "encoding"]
+
+[dependencies]
+axum-cloudevents-core = { path = "../axum-cloudevents-core", version = "0.1.0" }
+axum-cloudevents-tagged = { path = "../axum-cloudevents-tagged", version = "0.1.0", optional = true }
+axum-cloudevents-macros = { path = "../axum-cloudevents-macros", version = "0.1.0", optional = true }
+
+[features]
+default = ["tagged"]
+tagged = ["axum-cloudevents-tagged", "axum-cloudevents-macros"]
+tracing = ["axum-cloudevents-core/tracing"]
