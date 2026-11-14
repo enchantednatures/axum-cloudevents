@@ -1,0 +1,18 @@
+[package]
+name = "axum-cloudevents-macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Proc macros for axum-cloudevents tagged enum routing"
+readme = "README.md"
+publish = ["kellnr"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "3.0", features = ["full", "parsing", "extra-traits"] }
