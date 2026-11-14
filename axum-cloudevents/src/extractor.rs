@@ -7,45 +7,96 @@ use serde_json::Value;
 use crate::error::CloudEventError;
 use crate::metadata::CloudEventMetadata;
 
+/// A typed CloudEvent extracted from an Axum request.
+///
+/// `CloudEvent<T>` implements [`FromRequest`], where `T` is the payload type:
+///
+/// - In **structured** mode, `T` deserializes from the envelope's `data` field.
+/// - In **binary** mode, `T` deserializes from the request body.
+///
+/// # Content-mode detection
+///
+/// A request with any `ce-*` header is treated as binary. If the body is a JSON
+/// object containing non-empty `specversion`, `id`, `source`, and `type`, the
+/// structured body wins instead. This handles the Knative Kafka broker
+/// dispatcher, which sends a structured body together with duplicate `ce-*`
+/// headers.
+///
+/// # Example
+///
+/// ```
+/// use axum::Json;
+/// use axum_cloudevents::CloudEvent;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Deserialize)]
+/// struct Ping {
+///     message: String,
+/// }
+///
+/// #[derive(Serialize)]
+/// struct Pong {
+///     reply: String,
+///     event_id: String,
+/// }
+///
+/// async fn handler(event: CloudEvent<Ping>) -> Json<Pong> {
+///     Json(Pong {
+///         reply: format!("pong: {}", event.data.message),
+///         event_id: event.id().to_string(),
+///     })
+/// }
+/// ```
 #[derive(Debug)]
 pub struct CloudEvent<T: DeserializeOwned> {
+    /// Event metadata (CloudEvents attributes).
     pub metadata: CloudEventMetadata,
+    /// Deserialized event payload.
     pub data: T,
 }
 
 impl<T: DeserializeOwned> CloudEvent<T> {
+    /// Creates an event from metadata and a payload.
     pub fn new(metadata: CloudEventMetadata, data: T) -> Self {
         Self { metadata, data }
     }
 
+    /// Returns the CloudEvents `id` attribute.
     pub fn id(&self) -> &str {
         &self.metadata.id
     }
 
+    /// Returns the CloudEvents `type` attribute.
     pub fn r#type(&self) -> &str {
         &self.metadata.r#type
     }
 
+    /// Returns the CloudEvents `source` attribute.
     pub fn source(&self) -> &str {
         &self.metadata.source
     }
 
+    /// Returns the optional `subject` attribute.
     pub fn subject(&self) -> Option<&str> {
         self.metadata.subject.as_deref()
     }
 
+    /// Returns the optional `time` attribute.
     pub fn time(&self) -> Option<&str> {
         self.metadata.time.as_deref()
     }
 
+    /// Returns the optional `datacontenttype` attribute.
     pub fn content_type(&self) -> Option<&str> {
         self.metadata.data_content_type.as_deref()
     }
 
+    /// Consumes the event and returns the payload.
     pub fn into_data(self) -> T {
         self.data
     }
 
+    /// Consumes the event and returns its metadata and payload.
     pub fn into_parts(self) -> (CloudEventMetadata, T) {
         (self.metadata, self.data)
     }
