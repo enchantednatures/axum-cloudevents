@@ -7,30 +7,39 @@ use crate::headers::{
     CE_TYPE,
 };
 
+/// CloudEvents 1.0 attributes shared by structured and binary mode.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudEventMetadata {
+    /// Unique event identifier (`id`).
     #[serde(rename = "id")]
     pub id: String,
 
+    /// Event source URI-reference (`source`).
     #[serde(rename = "source")]
     pub source: String,
 
+    /// Event type (`type`).
     #[serde(rename = "type")]
     pub r#type: String,
 
+    /// CloudEvents specification version (`specversion`), defaulting to `1.0`.
     #[serde(rename = "specversion", default = "default_spec_version")]
     pub spec_version: String,
 
+    /// Optional media type of the payload (`datacontenttype`).
     #[serde(rename = "datacontenttype", default)]
     pub data_content_type: Option<String>,
 
+    /// Optional payload schema URI (`dataschema`).
     #[serde(rename = "dataschema", default)]
     pub data_schema: Option<String>,
 
+    /// Optional subject (`subject`).
     #[serde(rename = "subject", default)]
     pub subject: Option<String>,
 
+    /// Optional event timestamp (`time`).
     #[serde(rename = "time", default)]
     pub time: Option<String>,
 }
@@ -40,6 +49,7 @@ fn default_spec_version() -> String {
 }
 
 impl CloudEventMetadata {
+    /// Creates metadata with the required attributes and `specversion` `1.0`.
     pub fn new(
         id: impl Into<String>,
         source: impl Into<String>,
@@ -57,6 +67,11 @@ impl CloudEventMetadata {
         }
     }
 
+    /// Builds metadata from binary-mode `ce-*` headers.
+    ///
+    /// Returns [`CloudEventError::MissingHeader`] when `ce-id`, `ce-source`, or
+    /// `ce-type` is absent or not valid UTF-8. `ce-specversion` defaults to
+    /// `1.0`; the remaining attributes are optional.
     pub fn from_headers(headers: &HeaderMap) -> Result<Self, CloudEventError> {
         let id = get_required_header(headers, CE_ID)?;
         let source = get_required_header(headers, CE_SOURCE)?;
@@ -75,6 +90,7 @@ impl CloudEventMetadata {
         })
     }
 
+    /// Returns `true` when the event type starts with `prefix`.
     pub fn type_matches(&self, prefix: &str) -> bool {
         self.r#type.starts_with(prefix)
     }

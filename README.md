@@ -1,13 +1,25 @@
 # axum-cloudevents
 
+[![CI](https://github.com/enchantednatures/axum-cloudevents/actions/workflows/ci.yaml/badge.svg)](https://github.com/enchantednatures/axum-cloudevents/actions/workflows/ci.yaml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 CloudEvents 1.0 extractors for [Axum](https://github.com/tokio-rs/axum) 0.8+.
 
 `axum-cloudevents` implements `FromRequest` for `CloudEvent<T>`, so a handler can
-take a typed CloudEvent directly. Both structured (`application/cloudevents+json`)
-and binary (`ce-*` headers) content modes are supported, along with the
-`CloudEventTagged` derive for routing event types to enum variants.
+take a typed CloudEvent directly. Both structured
+(`application/cloudevents+json`) and binary (`ce-*` headers) content modes are
+supported, along with the `CloudEventTagged` derive for event-type routing.
 
 > Not affiliated with or endorsed by the Axum project.
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Usage guide](docs/USAGE.md) — content modes, metadata, tagged routing, errors, testing
+- [Publishing](docs/PUBLISHING.md) — Kellnr releases, tokens, versioning
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 
 ## Crates
 
@@ -101,10 +113,26 @@ ce-type: com.example.ping
 { "message": "hello" }
 ```
 
-## Tagged enum routing
+## Content-mode detection
+
+A request with any `ce-*` header is treated as binary. If the body is a JSON
+object containing non-empty `specversion`, `id`, `source`, and `type`, the
+structured body wins instead. This handles the Knative Kafka broker dispatcher,
+which sends a structured body together with duplicate `ce-*` headers.
+
+A request with `ce-source`/`ce-type` but no `ce-id` is treated as malformed
+binary and returns a missing-header error rather than falling back to JSON.
+
+## Tagged routing
+
+`CloudEventTagged` generates an inherent
+`from_cloud_event_parts(event_type, data)` method. It does **not** implement
+`Deserialize` and does not hook into the extractor automatically. Extract the
+raw payload and route it:
 
 ```rust
-use axum_cloudevents::CloudEventTagged;
+use axum::{http::StatusCode, Json};
+use axum_cloudevents::{CloudEvent, CloudEventTagged};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -126,38 +154,60 @@ enum ThingEvent {
     Deleted(Deleted),
 }
 
-let event = ThingEvent::from_cloud_event_parts(
-    "com.example.thing.created",
-    serde_json::json!({ "id": "thing-1" }),
-)
-.expect("known event type");
+async fn handler(
+    event: CloudEvent<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let (metadata, data) = event.into_parts();
+    let routed = ThingEvent::from_cloud_event_parts(&metadata.r#type, data)
+        .map_err(|message| (StatusCode::BAD_REQUEST, message))?;
+
+    let id = match routed {
+        ThingEvent::Created(payload) => payload.id,
+        ThingEvent::Deleted(payload) => payload.id,
+    };
+
+    Ok(Json(serde_json::json!({ "id": id, "event_id": metadata.id })))
+}
 ```
 
-The derive accepts either the fully prefixed type (`com.example.thing.created`)
-or the bare suffix (`created`).
+The generated method accepts either the fully prefixed type
+(`com.example.thing.created`) or the bare suffix (`created`).
 
-## Metadata
+## Errors
 
-`CloudEvent<T>` exposes `metadata` plus convenience accessors:
+`CloudEventError` implements `IntoResponse` and returns `400 Bad Request` with a
+JSON body:
 
-```rust
-event.id();
-event.r#type();
-event.source();
-event.subject();
-event.time();
-event.content_type();
+```json
+{ "error": "Missing header: ce-id" }
 ```
 
-Header-name constants (`CE_ID`, `CE_SOURCE`, `CE_TYPE`, `CE_SPECVERSION`,
-`CE_DATACONTENTTYPE`, `CE_DATASCHEMA`, `CE_SUBJECT`, `CE_TIME`) are available
-from the crate root, as is `CLOUDEVENTS_JSON_CONTENT_TYPE`.
+| Variant | Cause |
+| --- | --- |
+| `BodyRead` | The request body could not be read |
+| `InvalidJson` | The body was not JSON or did not match the payload type |
+| `MissingField` | A required structured envelope field was missing or empty |
+| `MissingHeader` | A required `ce-*` header was missing or not valid UTF-8 |
+| `UnknownEventType` | A tagged router did not recognize the event type |
 
-## Feature flags
+The extractor reads the full body into memory; configure Axum's
+`DefaultBodyLimit` for untrusted input.
 
-| Feature | Default | Description |
-| --- | --- | --- |
-| `macros` | yes | Re-export `CloudEventTagged` from `axum-cloudevents-macros` |
+## Examples
+
+```bash
+cargo run -p axum-cloudevents --example simple
+cargo run -p axum-cloudevents --example tagged
+```
+
+`simple` demonstrates both content modes; `tagged` demonstrates the manual
+`CloudEventTagged` routing pattern.
+
+## Compatibility
+
+- Axum 0.8
+- CloudEvents 1.0
+- Rust 1.92 or newer
 
 ## Development
 
@@ -169,21 +219,21 @@ cargo doc --workspace --no-deps
 ```
 
 The workspace `.cargo/config.toml` patches the macros dependency to the local
-workspace member, so development and CI do not need a Kellnr token. Publishing
-still resolves the dependency from Kellnr.
+member, so development and CI do not need a Kellnr token. Publishing still
+resolves the dependency from Kellnr.
 
 ## Publishing
 
 Versions are centralized in `[workspace.package]`. To release:
 
 1. Update `version` in `Cargo.toml`.
-2. Update the consuming project's dependency range if the minor version changed.
+2. Update `CHANGELOG.md`.
 3. Commit, then push a `crates-vX.Y.Z` tag.
 4. The publish workflow verifies the tag matches both crates, publishes
    `axum-cloudevents-macros` first, then `axum-cloudevents`.
 
-The workflow requires the `KELLNR_PUBLISH_TOKEN` repository secret. A manual
-`workflow_dispatch` run supports a dry-run mode.
+The workflow requires the `KELLNR_PUBLISH_TOKEN` repository secret. See
+[docs/PUBLISHING.md](docs/PUBLISHING.md) for the full release and token process.
 
 ## License
 

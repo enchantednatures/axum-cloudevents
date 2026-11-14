@@ -30,7 +30,13 @@ enum ThingEvent {
 ```
 
 The generated `from_cloud_event_parts(event_type, data)` accepts either the
-fully prefixed type or the bare suffix.
+fully prefixed type or the bare suffix. The derive does **not** implement
+`Deserialize` and does not hook into the extractor automatically; extract a
+`CloudEvent<serde_json::Value>` and call the method with the event type and
+data.
+
+See the [usage guide](https://github.com/enchantednatures/axum-cloudevents/blob/main/docs/USAGE.md)
+for the complete routing example.
 
 > Not affiliated with or endorsed by the Axum project.
 
