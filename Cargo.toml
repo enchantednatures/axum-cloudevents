@@ -1,29 +1,15 @@
 [workspace]
-members = [
-    "crates/axum-cloudevents-core",
-    "crates/axum-cloudevents-macros",
-    "crates/axum-cloudevents-tagged",
-    "crates/axum-cloudevents",
-    "examples/*",
-]
+members = ["axum-cloudevents", "axum-cloudevents-macros"]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourusername/axum-cloudevents"
+rust-version = "1.92"
+license = "MIT"
+repository = "https://github.com/enchantednatures/axum-cloudevents"
 
 [workspace.dependencies]
-axum = "0.8"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-http = "1.0"
-http-body = "1.0"
-http-body-util = "0.1"
-thiserror = "2.0"
-tracing = "0.1"
-
-[workspace.metadata.release]
-publish = false
+# Published to the private Kellnr registry. The local `.cargo/config.toml`
+# patches this to the workspace member so `cargo test` works without a token.
+axum-cloudevents-macros = { version = "0.1", registry = "kellnr" }

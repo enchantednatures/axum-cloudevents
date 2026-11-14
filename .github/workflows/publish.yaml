@@ -1,0 +1,104 @@
+name: Publish crates
+
+on:
+  push:
+    tags: ["crates-v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run cargo publish --dry-run only
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-crates
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: Publish to Kellnr
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_REGISTRIES_KELLNR_TOKEN: ${{ secrets.KELLNR_PUBLISH_TOKEN }}
+      DRY_RUN: ${{ inputs.dry_run || 'false' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify publish token
+        run: |
+          if [ -z "${CARGO_REGISTRIES_KELLNR_TOKEN:-}" ]; then
+            echo "::error::KELLNR_PUBLISH_TOKEN repository secret is required"
+            exit 1
+          fi
+
+      - name: Verify tag matches crate versions
+        if: startsWith(github.ref, 'refs/tags/crates-v')
+        run: |
+          set -euo pipefail
+
+          tag_version="${GITHUB_REF_NAME#crates-v}"
+          metadata=$(cargo metadata --no-deps --format-version 1)
+          main_version=$(jq -r '.packages[] | select(.name == "axum-cloudevents") | .version' <<<"$metadata")
+          macros_version=$(jq -r '.packages[] | select(.name == "axum-cloudevents-macros") | .version' <<<"$metadata")
+
+          echo "tag:              ${tag_version}"
+          echo "axum-cloudevents: ${main_version}"
+          echo "macros:           ${macros_version}"
+
+          if [ "$tag_version" != "$main_version" ] || [ "$tag_version" != "$macros_version" ]; then
+            echo "::error::crates-v${tag_version} does not match the crate versions"
+            exit 1
+          fi
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --workspace --all-features
+
+      - name: Publish macros, then main crate
+        run: |
+          set -euo pipefail
+
+          metadata=$(cargo metadata --no-deps --format-version 1)
+
+          publish_one() {
+            local package="$1"
+            local version
+            version=$(jq -r --arg p "$package" '.packages[] | select(.name == $p) | .version' <<<"$metadata")
+
+            if cargo info "${package}@${version}" --registry kellnr >/dev/null 2>&1; then
+              echo "${package} ${version} is already published; skipping"
+              return 0
+            fi
+
+            if [ "${DRY_RUN}" = "true" ]; then
+              cargo publish -p "$package" --registry kellnr --dry-run
+            else
+              cargo publish -p "$package" --registry kellnr
+            fi
+          }
+
+          publish_one axum-cloudevents-macros
+          # Give the registry index a moment to expose the macros version before
+          # the main crate's publish verification resolves it.
+          if [ "${DRY_RUN}" != "true" ]; then
+            sleep 5
+          fi
+          publish_one axum-cloudevents
