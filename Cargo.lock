@@ -73,7 +73,7 @@ dependencies = [
 
 [[package]]
 name = "axum-cloudevents"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "axum-cloudevents-macros",
@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "axum-cloudevents-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro2",
  "quote",
