@@ -2,20 +2,33 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 
+/// Errors produced while extracting a CloudEvent.
+///
+/// The [`IntoResponse`] implementation maps every variant to
+/// `400 Bad Request` with a JSON body:
+///
+/// ```json
+/// { "error": "Missing header: ce-id" }
+/// ```
 #[derive(Debug, thiserror::Error)]
 pub enum CloudEventError {
+    /// The request body could not be read.
     #[error("Failed to read request body: {0}")]
     BodyRead(String),
 
+    /// The body was not valid JSON, or did not match the payload type.
     #[error("Invalid JSON: {0}")]
     InvalidJson(#[from] serde_json::Error),
 
+    /// A required structured CloudEvent field was missing or empty.
     #[error("Missing required field: {0}")]
     MissingField(&'static str),
 
+    /// A required binary-mode `ce-*` header was missing or not valid UTF-8.
     #[error("Missing required header: {0}")]
     MissingHeader(String),
 
+    /// A tagged router did not recognize the CloudEvent type.
     #[error("Unknown event type: {0}")]
     UnknownEventType(String),
 }
